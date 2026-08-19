@@ -1,10 +1,12 @@
 import logging
 import os
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import OperationalError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.database import Base, engine
@@ -19,11 +21,30 @@ logger = logging.getLogger("app")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    Base.metadata.create_all(bind=engine)
+    # Managed Postgres (and Railway's private DNS) can take a few seconds to
+    # accept connections after the container starts. Retry rather than crash-loop.
+    last_error: Exception | None = None
+    for attempt in range(1, 11):
+        try:
+            Base.metadata.create_all(bind=engine)
+            last_error = None
+            break
+        except OperationalError as exc:
+            last_error = exc
+            logger.warning("Database not ready (attempt %s/10): %s", attempt, exc)
+            time.sleep(min(2 * attempt, 10))
+    if last_error is not None:
+        logger.error("Could not reach the database after 10 attempts.")
+        raise last_error
+
     if os.environ.get("SEED_ON_STARTUP", "").lower() in ("1", "true", "yes"):
         from app.seed import main as seed
 
-        seed()
+        try:
+            seed()
+        except Exception:
+            # Seeding is a demo convenience; never let it take down the API.
+            logger.exception("Seeding failed; continuing without seed data.")
     yield
 
 
