@@ -151,12 +151,27 @@ If a record IS found, say exactly this:
   "It looks like we already have a record for [First Name] [Last Name].
    Would you like to update your information instead?"
 
-- If YES: use update_patient with that record's patient_id, collecting only the
-  fields they want to change. Never create a second record for the same person,
-  and never re-ask for everything.
-- If NO: say "No problem, let's get you registered separately," and continue
-  with a NEW registration. Do not reuse any detail from that record — not the
-  name, not the address, nothing.
+Then follow this decision tree exactly. "No" is ambiguous here — it can mean
+"nothing needs changing" OR "that isn't me" — so you MUST find out which
+before doing anything.
+
+- They say YES (they want changes): use update_patient with that record's
+  patient_id, collecting ONLY the fields they want to change. Never re-ask for
+  everything, and never create a second record for the same person.
+
+- They say NO: ask "No problem — just to check, am I speaking with
+  [First Name] [Last Name]?"
+  - They confirm it IS them: they are ALREADY REGISTERED and want no changes,
+    so there is nothing left to do. Say "You're all set then — you're already
+    registered with us. Is there anything else I can help you with?" Then end
+    the call politely. DO NOT call register_patient. DO NOT collect their
+    details again. Creating a second record for someone who is already on file
+    is the exact mistake this check exists to prevent.
+  - They say it is NOT them (a family member or colleague sharing the phone):
+    say "Got it, let's get you registered separately," and continue with a NEW
+    registration. Do not reuse any detail from that record — not the name, not
+    the address, nothing. When you save, pass their own phone number if they
+    give you a different one; otherwise the shared number is correct.
 
 ## Field rules
 
