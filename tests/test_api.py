@@ -200,3 +200,10 @@ def test_vapi_update_existing(client):
     result = _tool_call(client, "update_patient", {"patient_id": pid, "city": "Palo Alto"})
     assert result["success"] is True
     assert client.get(f"/patients/{pid}").json()["data"]["city"] == "Palo Alto"
+
+
+def test_dashboard_serves_html(client):
+    r = client.get("/dashboard")
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]
+    assert "Registered Patients" in r.text

@@ -7,6 +7,7 @@ through a REST API.
 **Live demo**
 - Phone number: **+1 (989) 569-8036** — call this to register (US callers)
 - API base URL: **https://voice-ai-patient-registration-production-683f.up.railway.app**
+- Dashboard: **https://voice-ai-patient-registration-production-683f.up.railway.app/dashboard**
 - Interactive API docs: https://voice-ai-patient-registration-production-683f.up.railway.app/docs
 
 Deployed on Railway (FastAPI service + managed Postgres with a persistent
@@ -153,6 +154,11 @@ All responses use the envelope `{ "data": ..., "error": ... }`.
 | `POST` | `/patients` | 201 with created record |
 | `PUT` | `/patients/{id}` | Partial updates; only supplied fields change |
 | `DELETE` | `/patients/{id}` | Soft delete — sets `deleted_at`, row is retained |
+
+Plus `GET /dashboard`, a read-only web UI listing registered patients with a
+client-side filter. It is self-contained (no build step, no CDN) and reads the
+same `/patients` endpoint reviewers use, so there is no second data path to
+drift out of sync.
 
 Status codes: 200, 201, 400 (malformed query param), 404, 422 (field
 validation), 500. Validation errors name every offending field:
@@ -328,4 +334,3 @@ is that this one is mitigated, not solved.
 5. Alembic migrations instead of `create_all`.
 6. Spanish support: detect language on the first turn and swap voice + prompt.
 7. Address verification against USPS to catch mis-transcribed street names.
-8. A small dashboard listing registered patients.
