@@ -85,7 +85,9 @@ def ensure_provider_credential() -> None:
     have = {c.get("provider") for c in existing}
     wanted = [
         ("google", os.environ.get("GEMINI_API_KEY"), LLM_PROVIDER == "google"),
-        ("assembly-ai", os.environ.get("ASSEMBLYAI_API_KEY"),
+        # Accept either spelling; both are in common use.
+        ("assembly-ai",
+         os.environ.get("ASSEMBLYAI_API_KEY") or os.environ.get("ASSEMBLY_API_KEY"),
          TRANSCRIBER_PROVIDER == "assembly-ai"),
     ]
     for provider, key, needed in wanted:
