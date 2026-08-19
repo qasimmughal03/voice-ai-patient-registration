@@ -94,7 +94,8 @@ trapped in a dashboard.** Re-run it with `VAPI_ASSISTANT_ID` set to push edits.
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `DATABASE_URL` | No | SQLAlchemy URL. Defaults to `sqlite:///./patients.db` |
+| `DATABASE_URL` | No | SQLAlchemy URL. Defaults to `sqlite:///./patients.db`. `postgres://` and `postgresql://` are rewritten to use psycopg 3 automatically |
+| `SEED_ON_STARTUP` | No | `true` inserts the 2 demo patients on boot if missing |
 | `VAPI_API_KEY` | Setup only | Vapi private key, used by the setup scripts |
 | `PUBLIC_BASE_URL` | Setup only | Public URL of this API, for the webhook |
 | `VAPI_WEBHOOK_SECRET` | No | If set, `/vapi/tools` requires a matching `X-Vapi-Secret` header |

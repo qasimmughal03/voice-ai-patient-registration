@@ -1,4 +1,5 @@
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -19,6 +20,10 @@ logger = logging.getLogger("app")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    if os.environ.get("SEED_ON_STARTUP", "").lower() in ("1", "true", "yes"):
+        from app.seed import main as seed
+
+        seed()
     yield
 
 
