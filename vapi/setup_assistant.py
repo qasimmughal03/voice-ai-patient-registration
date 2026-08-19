@@ -42,12 +42,44 @@ LLM_MODEL = os.environ.get("LLM_MODEL", "gemini-2.0-flash")
 VOICE_PROVIDER = os.environ.get("VOICE_PROVIDER", "vapi")
 VOICE_ID = os.environ.get("VOICE_ID", "Emma")
 TRANSCRIBER_PROVIDER = os.environ.get("TRANSCRIBER_PROVIDER", "assembly-ai")
-TRANSCRIBER_LANGUAGE = os.environ.get("TRANSCRIBER_LANGUAGE", "multi")
-TRANSCRIBER_CONFIG = (
-    {"language": TRANSCRIBER_LANGUAGE}
-    if TRANSCRIBER_PROVIDER == "assembly-ai"
-    else {"model": "nova-2", "language": "en-US"}
+TRANSCRIBER_LANGUAGE = os.environ.get("TRANSCRIBER_LANGUAGE", "en")
+# universal-3-5-pro is markedly better on names and accented English than the
+# universal-streaming models, and supports keyterm boosting plus a context
+# prompt. Allowed values: universal-streaming-english,
+# universal-streaming-multilingual, universal-3-5-pro.
+SPEECH_MODEL = os.environ.get("SPEECH_MODEL", "universal-3-5-pro")
+
+# Boost tokens the model would otherwise mangle. Registration vocabulary is
+# predictable even when names are not, and "Qasim" was consistently heard as
+# "Cosmi"/"Kassim"/"Kathim" before boosting.
+KEYTERMS = [
+    "Qasim", "Muhammad", "Harborview", "date of birth", "ZIP code",
+    "apartment", "suite", "insurance", "member ID", "emergency contact",
+    "decline to answer",
+]
+
+STT_PROMPT = (
+    "Patient registration phone call at a medical clinic. The caller gives "
+    "their full name, date of birth, sex, street address, city, state, and "
+    "ZIP code. Expect proper names from many cultures, spelled-out letters, "
+    "and digit sequences."
 )
+
+if TRANSCRIBER_PROVIDER == "assembly-ai":
+    TRANSCRIBER_CONFIG = {
+        "language": TRANSCRIBER_LANGUAGE,
+        "speechModel": SPEECH_MODEL,
+        "mode": os.environ.get("TRANSCRIBER_MODE", "balanced"),
+        "keytermsPrompt": KEYTERMS,
+        "prompt": STT_PROMPT,
+        # Callers pause mid-sentence while recalling an address or ZIP. Wait
+        # longer before declaring the turn over, so we stop truncating them
+        # into fragments like "My first name is."
+        "minEndOfTurnSilenceWhenConfident": 960,
+        "maxTurnSilence": 2400,
+    }
+else:
+    TRANSCRIBER_CONFIG = {"model": "nova-2", "language": "en-US"}
 
 if not API_KEY or not BASE_URL:
     sys.exit("Set VAPI_API_KEY and PUBLIC_BASE_URL first (see .env.example).")
