@@ -37,6 +37,10 @@ API_KEY = os.environ.get("VAPI_API_KEY")
 BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
 ASSISTANT_ID = os.environ.get("VAPI_ASSISTANT_ID")
 WEBHOOK_SECRET = os.environ.get("VAPI_WEBHOOK_SECRET")
+LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "google")
+LLM_MODEL = os.environ.get("LLM_MODEL", "gemini-2.0-flash")
+VOICE_PROVIDER = os.environ.get("VOICE_PROVIDER", "vapi")
+VOICE_ID = os.environ.get("VOICE_ID", "Emma")
 
 if not API_KEY or not BASE_URL:
     sys.exit("Set VAPI_API_KEY and PUBLIC_BASE_URL first (see .env.example).")
@@ -51,6 +55,9 @@ def request(method: str, path: str, payload: dict | None = None) -> dict:
         headers={
             "Authorization": f"Bearer {API_KEY}",
             "Content-Type": "application/json",
+            # urllib's default User-Agent trips Cloudflare (error 1010).
+            "User-Agent": "voice-patient-registration/1.0",
+            "Accept": "application/json",
         },
     )
     try:
@@ -59,6 +66,26 @@ def request(method: str, path: str, payload: dict | None = None) -> dict:
     except urllib.error.HTTPError as e:
         sys.exit(f"{method} {path} failed [{e.code}]: {e.read().decode()}")
 
+
+def ensure_provider_credential() -> None:
+    """Register the Gemini key with Vapi so the assistant can call Google.
+
+    Vapi stores provider keys server-side; this keeps the key out of the
+    assistant config and out of this repo. Safe to re-run — an existing
+    credential for the provider is left alone.
+    """
+    gemini_key = os.environ.get("GEMINI_API_KEY")
+    if not gemini_key or LLM_PROVIDER != "google":
+        return
+    existing = request("GET", "/credential")
+    if any(c.get("provider") == "google" for c in existing):
+        print("Google provider credential already present in Vapi.")
+        return
+    request("POST", "/credential", {"provider": "google", "apiKey": gemini_key})
+    print("Registered Gemini API key with Vapi as a Google provider credential.")
+
+
+ensure_provider_credential()
 
 system_prompt = (ROOT / "prompts" / "system_prompt.md").read_text()
 tools = json.loads((ROOT / "vapi" / "tools.json").read_text())
@@ -79,13 +106,18 @@ assistant = {
         "registered as a new patient. Can I start with your first and last name?"
     ),
     "model": {
-        "provider": "openai",
-        "model": "gpt-4o",
+        # Override with LLM_PROVIDER / LLM_MODEL in .env. Voice intake wants a
+        # low-latency model with reliable function calling; the flash-tier
+        # Gemini models and gpt-4o both qualify.
+        "provider": LLM_PROVIDER,
+        "model": LLM_MODEL,
         "temperature": 0.3,
         "messages": [{"role": "system", "content": system_prompt}],
         "tools": tools,
     },
-    "voice": {"provider": "11labs", "voiceId": "rachel"},
+    # Vapi-provided voice: no third-party TTS credential needed. Override with
+    # VOICE_PROVIDER / VOICE_ID to use 11labs, PlayHT, Deepgram, etc.
+    "voice": {"provider": VOICE_PROVIDER, "voiceId": VOICE_ID},
     "transcriber": {"provider": "deepgram", "model": "nova-2", "language": "en-US"},
     # Give callers room to think when reciting addresses and numbers.
     "silenceTimeoutSeconds": 30,
