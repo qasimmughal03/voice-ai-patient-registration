@@ -233,6 +233,39 @@ per-field error path.
 
 ## Trade-offs and known limitations
 
+### The main one: conversation flow is enforced by prompt, not by code
+
+Every step of the call — what to ask, in what order, what must be collected
+before saving — lives in `prompts/system_prompt.md` and is carried out by the
+LLM on trust. Nothing in the system *prevents* the agent from departing from
+that flow; the prompt only asks it not to.
+
+This is the system's principal weakness, and it is not hypothetical. Across
+test calls the agent variously invented values for fields it never asked about,
+called `register_patient` before collecting the ZIP code and without the
+required read-back, and skipped the phone-number question entirely (which
+silently disables duplicate detection, since the lookup needs a number). In
+every one of those cases the correct instruction was already present in the
+prompt and was simply not followed.
+
+Two defences exist today and both are real, but neither is complete:
+
+- **Server-side validation** rejects anything malformed, so a fabricated
+  three-digit phone number cannot reach the database. Its blind spot is
+  well-formed but wrong data: `Butte`, `MT`, and `98901` all pass every
+  validator while being entirely invented.
+- **Imperative tool responses** carry the critical instructions, because models
+  act far more reliably on fresh tool output than on a conditional buried in a
+  long prompt. `find_patient_by_phone` returning `REQUIRED NEXT ACTION: ...`
+  fixed the skipped phone question that three rounds of prompt wording did not.
+
+The structural fix is to move sequencing out of the prompt — see Next steps.
+It was consciously deferred rather than overlooked: the challenge asks for an
+agent that feels like a human intake coordinator and explicitly *not* a rigid
+IVR menu, and a hard state machine trades directly against that. With the
+remaining time better spent on a working end-to-end system, the honest position
+is that this one is mitigated, not solved.
+
 - **SQLite by default, Postgres in deployment.** SQLite keeps local setup to
   zero steps, but on a host with an ephemeral filesystem it silently loses
   every record on redeploy. This actually happened during deployment: the
@@ -267,12 +300,32 @@ per-field error path.
 
 ## Next steps
 
-1. Import a Twilio number in place of the free Vapi number, lifting the
+1. **Externalise the collection checklist — the highest-value change here.**
+   Add a `save_field` tool the agent calls as each value is captured, and have
+   every tool response return what is still outstanding
+   (`"still missing: city, zip_code"`). Server-side state then answers "am I
+   done?" instead of the model's recollection of the conversation, which is
+   precisely the judgement it has proved unreliable at. Crucially this keeps
+   the conversation free-form — the agent still chooses phrasing, handles
+   out-of-order answers, and recovers from corrections — so it buys correctness
+   without the IVR rigidity that a full state machine would impose. It also
+   yields partial records that survive a mid-call disconnect, rather than
+   losing everything collected so far.
+
+   The stricter alternative is a server-driven state machine: a
+   `get_next_question` tool where the backend owns the field order outright and
+   the agent asks whatever it is told. Skipping becomes impossible because the
+   model never sees the sequence. The costs are an extra round-trip per field
+   and a noticeably more mechanical call, so it is the right design for a
+   compliance-critical intake and the wrong one for the conversational quality
+   this challenge asks for.
+
+2. Import a Twilio number in place of the free Vapi number, lifting the
    US-only inbound restriction described above.
-2. Persist call transcripts linked to `patient_id` via Vapi's
+3. Persist call transcripts linked to `patient_id` via Vapi's
    `end-of-call-report` webhook (the assistant already subscribes to it).
-3. API-key auth plus per-IP rate limiting on the REST endpoints.
-4. Alembic migrations instead of `create_all`.
-5. Spanish support: detect language on the first turn and swap voice + prompt.
-6. Address verification against USPS to catch mis-transcribed street names.
-7. A small dashboard listing registered patients.
+4. API-key auth plus per-IP rate limiting on the REST endpoints.
+5. Alembic migrations instead of `create_all`.
+6. Spanish support: detect language on the first turn and swap voice + prompt.
+7. Address verification against USPS to catch mis-transcribed street names.
+8. A small dashboard listing registered patients.
