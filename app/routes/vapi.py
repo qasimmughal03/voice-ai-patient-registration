@@ -39,7 +39,21 @@ def _validation_errors(exc: ValidationError) -> dict:
     }
 
 
-def tool_register_patient(args: dict, db: Session) -> dict:
+def tool_register_patient(args: dict, db: Session, caller_number: str | None = None) -> dict:
+    # Prefer the caller's real number from the telephony layer over anything
+    # transcribed from speech. Digit sequences are the least reliable thing an
+    # STT engine produces, and a fabricated phone number silently corrupts the
+    # record. An explicitly supplied number still wins if it is valid.
+    if caller_number:
+        supplied = args.get("phone_number")
+        try:
+            if supplied:
+                normalize_phone(supplied)
+            else:
+                raise ValueError("absent")
+        except ValueError:
+            args = {**args, "phone_number": caller_number}
+            logger.info("Using caller ID for phone_number instead of %r", supplied)
     try:
         payload = PatientCreate(**args)
     except ValidationError as exc:
@@ -54,9 +68,9 @@ def tool_register_patient(args: dict, db: Session) -> dict:
             "message": f"Registered {patient.first_name} {patient.last_name}."}
 
 
-def tool_find_patient_by_phone(args: dict, db: Session) -> dict:
+def tool_find_patient_by_phone(args: dict, db: Session, caller_number: str | None = None) -> dict:
     try:
-        phone = normalize_phone(args.get("phone_number", ""))
+        phone = normalize_phone(args.get("phone_number") or caller_number or "")
     except ValueError as e:
         return {"success": False, "errors": [{"field": "phone_number", "message": str(e)}]}
     patient = db.scalars(
@@ -75,7 +89,7 @@ def tool_find_patient_by_phone(args: dict, db: Session) -> dict:
     }
 
 
-def tool_update_patient(args: dict, db: Session) -> dict:
+def tool_update_patient(args: dict, db: Session, caller_number: str | None = None) -> dict:
     patient_id = args.pop("patient_id", None)
     if not patient_id:
         return {"success": False, "errors": [{"field": "patient_id", "message": "is required"}]}
@@ -104,6 +118,24 @@ TOOLS = {
 }
 
 
+def _extract_caller_number(body: dict) -> str | None:
+    """The caller's real number from the telephony layer, if usable.
+
+    Vapi puts it at message.call.customer.number for inbound PSTN calls. Web
+    calls have no customer number, so this is simply absent there.
+    """
+    call = (body.get("message") or {}).get("call") or {}
+    raw = ((call.get("customer") or {}).get("number")) or call.get("customerNumber")
+    if not raw:
+        return None
+    try:
+        return normalize_phone(raw)
+    except ValueError:
+        # Non-US or withheld caller ID: fall back to asking the caller.
+        logger.info("Caller ID %r is not a usable U.S. number; will ask instead", raw)
+        return None
+
+
 def _extract_tool_calls(body: dict) -> list[dict]:
     """Normalize Vapi's tool-call payload variants to [{id, name, arguments}]."""
     message = body.get("message", {})
@@ -130,6 +162,7 @@ async def handle_tool_calls(request: Request, db: Session = Depends(get_db)):
         )
 
     body = await request.json()
+    caller_number = _extract_caller_number(body)
     results = []
     for call in _extract_tool_calls(body):
         handler = TOOLS.get(call["name"])
@@ -137,7 +170,7 @@ async def handle_tool_calls(request: Request, db: Session = Depends(get_db)):
             result = {"success": False, "errors": [{"field": "*", "message": f"unknown tool {call['name']}"}]}
         else:
             try:
-                result = handler(call["arguments"], db)
+                result = handler(call["arguments"], db, caller_number)
             except Exception:
                 logger.exception("Tool %s failed", call["name"])
                 result = {"success": False,

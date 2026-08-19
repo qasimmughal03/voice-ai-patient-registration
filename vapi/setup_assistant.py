@@ -41,6 +41,13 @@ LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "google")
 LLM_MODEL = os.environ.get("LLM_MODEL", "gemini-2.0-flash")
 VOICE_PROVIDER = os.environ.get("VOICE_PROVIDER", "vapi")
 VOICE_ID = os.environ.get("VOICE_ID", "Emma")
+TRANSCRIBER_PROVIDER = os.environ.get("TRANSCRIBER_PROVIDER", "assembly-ai")
+TRANSCRIBER_LANGUAGE = os.environ.get("TRANSCRIBER_LANGUAGE", "multi")
+TRANSCRIBER_CONFIG = (
+    {"language": TRANSCRIBER_LANGUAGE}
+    if TRANSCRIBER_PROVIDER == "assembly-ai"
+    else {"model": "nova-2", "language": "en-US"}
+)
 
 if not API_KEY or not BASE_URL:
     sys.exit("Set VAPI_API_KEY and PUBLIC_BASE_URL first (see .env.example).")
@@ -74,15 +81,26 @@ def ensure_provider_credential() -> None:
     assistant config and out of this repo. Safe to re-run — an existing
     credential for the provider is left alone.
     """
-    gemini_key = os.environ.get("GEMINI_API_KEY")
-    if not gemini_key or LLM_PROVIDER != "google":
-        return
     existing = request("GET", "/credential")
-    if any(c.get("provider") == "google" for c in existing):
-        print("Google provider credential already present in Vapi.")
-        return
-    request("POST", "/credential", {"provider": "google", "apiKey": gemini_key})
-    print("Registered Gemini API key with Vapi as a Google provider credential.")
+    have = {c.get("provider") for c in existing}
+    wanted = [
+        ("google", os.environ.get("GEMINI_API_KEY"), LLM_PROVIDER == "google"),
+        ("assembly-ai", os.environ.get("ASSEMBLYAI_API_KEY"),
+         TRANSCRIBER_PROVIDER == "assembly-ai"),
+    ]
+    for provider, key, needed in wanted:
+        if not needed:
+            continue
+        if provider in have:
+            print(f"{provider} credential already present in Vapi.")
+        elif key:
+            request("POST", "/credential", {"provider": provider, "apiKey": key})
+            print(f"Registered {provider} credential with Vapi.")
+        else:
+            sys.exit(
+                f"{provider} is configured but no API key was found. Set the "
+                f"matching key in .env (GEMINI_API_KEY / ASSEMBLYAI_API_KEY)."
+            )
 
 
 ensure_provider_credential()
@@ -118,7 +136,11 @@ assistant = {
     # Vapi-provided voice: no third-party TTS credential needed. Override with
     # VOICE_PROVIDER / VOICE_ID to use 11labs, PlayHT, Deepgram, etc.
     "voice": {"provider": VOICE_PROVIDER, "voiceId": VOICE_ID},
-    "transcriber": {"provider": "deepgram", "model": "nova-2", "language": "en-US"},
+    # AssemblyAI Universal-Streaming: markedly better on names, spelled letters,
+    # and digit strings than nova-2 in testing, and it reports end-of-turn
+    # itself (so no separate smart-endpointing plan). language "multi" covers
+    # en/fr/de/it/pt/es; "en" is more accurate if English-only is acceptable.
+    "transcriber": {"provider": TRANSCRIBER_PROVIDER, **TRANSCRIBER_CONFIG},
     # Give callers room to think when reciting addresses and numbers.
     "silenceTimeoutSeconds": 30,
     "responseDelaySeconds": 0.3,

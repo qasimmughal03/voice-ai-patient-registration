@@ -9,10 +9,10 @@
         "properties": {
           "phone_number": {
             "type": "string",
-            "description": "The caller's 10-digit U.S. phone number, digits only."
+            "description": "Optional. Omit this to look up the number the caller is dialing from, which is the normal case. Only pass a value if the caller explicitly gives a different number."
           }
         },
-        "required": ["phone_number"]
+        "required": []
       }
     }
   },
@@ -28,7 +28,7 @@
           "last_name": {"type": "string", "description": "Legal last name."},
           "date_of_birth": {"type": "string", "description": "Date of birth in MM/DD/YYYY format. Must be in the past."},
           "sex": {"type": "string", "enum": ["Male", "Female", "Other", "Decline to Answer"]},
-          "phone_number": {"type": "string", "description": "10-digit U.S. phone number, digits only."},
+          "phone_number": {"type": "string", "description": "Omit unless the caller explicitly asked for a different number on file — their calling number is used automatically. Never guess or invent this value."},
           "address_line_1": {"type": "string", "description": "Street address."},
           "city": {"type": "string"},
           "state": {"type": "string", "description": "Two-letter U.S. state abbreviation, e.g. CA."},
@@ -42,7 +42,7 @@
           "emergency_contact_phone": {"type": "string", "description": "Optional 10-digit emergency contact phone."}
         },
         "required": [
-          "first_name", "last_name", "date_of_birth", "sex", "phone_number",
+          "first_name", "last_name", "date_of_birth", "sex",
           "address_line_1", "city", "state", "zip_code"
         ]
       }

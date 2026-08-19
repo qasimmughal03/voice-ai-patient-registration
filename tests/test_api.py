@@ -120,6 +120,62 @@ def test_vapi_register_reports_bad_fields_for_reprompt(client):
     assert fields == {"phone_number", "date_of_birth"}
 
 
+def _tool_call_from(client, name, args, caller_number):
+    """Tool call carrying Vapi's inbound-call metadata (caller ID)."""
+    r = client.post(
+        "/vapi/tools",
+        json={
+            "message": {
+                "call": {"customer": {"number": caller_number}},
+                "toolCallList": [{"id": "t1", "name": name, "arguments": args}],
+            }
+        },
+    )
+    assert r.status_code == 200
+    return json.loads(r.json()["results"][0]["result"])
+
+
+def test_caller_id_fills_missing_phone(client):
+    """The agent omitting phone_number must not produce a fabricated one."""
+    args = {k: v for k, v in VALID.items() if k != "phone_number"}
+    result = _tool_call_from(client, "register_patient", args, "+1 (312) 555-0144")
+    assert result["success"] is True
+    stored = client.get(f"/patients/{result['patient_id']}").json()["data"]
+    assert stored["phone_number"] == "3125550144"
+
+
+def test_caller_id_overrides_invalid_transcribed_phone(client):
+    """A garbled STT phone number loses to the real caller ID."""
+    result = _tool_call_from(
+        client, "register_patient", {**VALID, "phone_number": "989"}, "3125550144"
+    )
+    assert result["success"] is True
+    stored = client.get(f"/patients/{result['patient_id']}").json()["data"]
+    assert stored["phone_number"] == "3125550144"
+
+
+def test_explicit_valid_phone_beats_caller_id(client):
+    """A caller asking for a different number on file is respected."""
+    result = _tool_call_from(client, "register_patient", VALID, "3125550144")
+    stored = client.get(f"/patients/{result['patient_id']}").json()["data"]
+    assert stored["phone_number"] == "4155550199"
+
+
+def test_lookup_uses_caller_id_when_no_argument(client):
+    _tool_call_from(client, "register_patient", VALID, "3125550144")
+    found = _tool_call_from(client, "find_patient_by_phone", {}, "415-555-0199")
+    assert found["found"] is True
+    assert found["first_name"] == "Ada"
+
+
+def test_no_phone_and_no_caller_id_is_rejected_not_invented(client):
+    """Web calls have no caller ID; the API must refuse, not fabricate."""
+    args = {k: v for k, v in VALID.items() if k != "phone_number"}
+    result = _tool_call(client, "register_patient", args)
+    assert result["success"] is False
+    assert any(e["field"] == "phone_number" for e in result["errors"])
+
+
 def test_vapi_update_existing(client):
     pid = _tool_call(client, "register_patient", VALID)["patient_id"]
     result = _tool_call(client, "update_patient", {"patient_id": pid, "city": "Palo Alto"})
