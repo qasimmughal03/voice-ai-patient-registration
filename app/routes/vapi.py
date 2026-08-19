@@ -69,15 +69,23 @@ def tool_register_patient(args: dict, db: Session, caller_number: str | None = N
 
 
 def tool_find_patient_by_phone(args: dict, db: Session, caller_number: str | None = None) -> dict:
+    # Imperative phrasing: models act on tool output far more reliably than on
+    # a conditional buried in a long system prompt, and skipping this step
+    # silently disables duplicate detection.
+    ASK_NOW = (
+        "REQUIRED NEXT ACTION: the system does NOT know this caller's phone "
+        "number. Before asking anything else, say: \"And what's the best phone "
+        "number to reach you?\" Read the number back one digit at a time, then "
+        "call find_patient_by_phone again with it. Do NOT skip this step and do "
+        "NOT say you already have their number."
+    )
     raw = args.get("phone_number") or caller_number
     if not raw:
-        # No caller ID (web calls) and nothing supplied. This is a normal
-        # state, not an error: the agent must ask for the number instead.
         return {
             "success": True,
             "found": False,
             "caller_id_available": False,
-            "next_step": "Ask the caller for their phone number; it is not known.",
+            "next_step": ASK_NOW,
         }
     try:
         phone = normalize_phone(raw)
@@ -86,7 +94,7 @@ def tool_find_patient_by_phone(args: dict, db: Session, caller_number: str | Non
             "success": True,
             "found": False,
             "caller_id_available": False,
-            "next_step": f"Ask the caller for their phone number ({e}).",
+            "next_step": f"That number was not usable ({e}). {ASK_NOW}",
         }
     patient = db.scalars(
         select(Patient)

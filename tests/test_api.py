@@ -175,6 +175,10 @@ def test_lookup_without_caller_id_is_a_clean_state_not_an_error(client):
     assert result["found"] is False
     assert result["caller_id_available"] is False
     assert "phone_number_spoken" not in result  # nothing to read back aloud
+    # The agent skipped asking entirely when this was a passive hint, which
+    # silently disabled duplicate detection. It must now be imperative.
+    assert "REQUIRED NEXT ACTION" in result["next_step"]
+    assert "phone number" in result["next_step"].lower()
 
 
 def test_lookup_with_caller_id_reports_it_available(client):
