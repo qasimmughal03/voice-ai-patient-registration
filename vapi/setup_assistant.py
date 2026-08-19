@@ -18,6 +18,21 @@ import urllib.request
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 API = "https://api.vapi.ai"
 
+
+def load_dotenv(path: pathlib.Path) -> None:
+    """Minimal .env loader so secrets live in a gitignored file, not the shell."""
+    if not path.exists():
+        return
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        os.environ.setdefault(key.strip(), value.strip().strip("'\""))
+
+
+load_dotenv(ROOT / ".env")
+
 API_KEY = os.environ.get("VAPI_API_KEY")
 BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
 ASSISTANT_ID = os.environ.get("VAPI_ASSISTANT_ID")
