@@ -27,7 +27,7 @@ volume). No credentials are needed to call the API.
 ## Architecture
 
 ```
-  Caller ──phone──▶ Vapi ──────▶ Gemini 2.5 Flash (Ava, intake coordinator)
+  Caller ──phone──▶ Vapi ──────▶ Gemini 3.5 Flash (Ava, intake coordinator)
                   (STT + TTS)             │
                                           │ tool calls (HTTPS webhook)
                                           ▼
@@ -71,20 +71,24 @@ model produces is trusted.
 - **SQLAlchemy + SQLite by default, Postgres via `DATABASE_URL`.** SQLite keeps
   local setup to zero steps; switching to Postgres in deployment is one
   environment variable, with no code change.
-- **Gemini 2.5 Flash** as the LLM. On a phone call, latency is a feature: every
+- **Gemini 3.5 Flash** as the LLM. On a phone call, latency is a feature: every
   extra hundred milliseconds is heard as an awkward pause, so a flash-tier
   model beats a pro-tier one here. It also has reliable function calling, which
   matters because the agent must fill a nine-field tool call while the caller
   corrects themselves mid-sentence. The provider and model are configurable
   (`LLM_PROVIDER` / `LLM_MODEL`), so swapping to `openai` / `gpt-4o` is a
   one-line change and a re-run of the setup script.
-- **AssemblyAI Universal-Streaming (English) for transcription.** Deepgram
-  nova-2 was tried first and mis-heard names badly ("Qasim" → "Kassim"). Note
-  that AssemblyAI's *multilingual* mode was measurably worse still on English
-  names ("Qasim" → "Cosmi", "Nomad Kassen") and stalled turn-taking enough to
-  trigger silence timeouts, so the English model is used deliberately. That
-  trades away the Spanish bonus for accuracy on the required path — see
-  Known limitations.
+- **AssemblyAI `universal-3-5-pro` for transcription**, reached by elimination
+  rather than by assumption. Deepgram nova-2 mis-heard names ("Qasim" →
+  "Kassim"); AssemblyAI's `universal-streaming-multilingual` was worse still
+  ("Cosmi", "Nomad Kassen") and finalised turns so slowly that calls died on
+  silence timeouts. `universal-3-5-pro` transcribes the same audio correctly.
+  It also accepts two things the streaming models do not: a `keytermsPrompt`
+  boosting terms the model would otherwise mangle (names, "date of birth",
+  "ZIP code"), and a domain `prompt` describing the call. Endpointing silence
+  is raised to 960ms so callers pausing to recall an address are not truncated
+  mid-sentence — truncation was the upstream cause of the LLM gap-filling
+  fragments into wrong values.
 - **Vapi-provided voice** (Emma) rather than ElevenLabs, so the demo needs no
   third-party TTS credential to reproduce.
 
@@ -130,8 +134,11 @@ trapped in a dashboard.** Re-run it with `VAPI_ASSISTANT_ID` set to push edits.
 | `PUBLIC_BASE_URL` | Setup only | Public URL of this API, for the webhook |
 | `VAPI_WEBHOOK_SECRET` | No | If set, `/vapi/tools` requires a matching `X-Vapi-Secret` header |
 | `GEMINI_API_KEY` | Setup only | Registered with Vapi as a Google provider credential on first run |
-| `LLM_PROVIDER` / `LLM_MODEL` | No | Default `google` / `gemini-2.5-flash` |
+| `ASSEMBLYAI_API_KEY` (or `ASSEMBLY_API_KEY`) | Setup only | Registered with Vapi as a transcriber credential |
+| `LLM_PROVIDER` / `LLM_MODEL` | No | Default `google` / `gemini-3.5-flash` |
 | `VOICE_PROVIDER` / `VOICE_ID` | No | Default `vapi` / `Emma` |
+| `TRANSCRIBER_PROVIDER` / `SPEECH_MODEL` | No | Default `assembly-ai` / `universal-3-5-pro` |
+| `TRANSCRIBER_LANGUAGE` / `TRANSCRIBER_MODE` | No | Default `en` / `balanced` |
 
 No secrets are read at request time by the API itself, and none are committed.
 
