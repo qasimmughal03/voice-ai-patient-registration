@@ -78,8 +78,15 @@ model produces is trusted.
   corrects themselves mid-sentence. The provider and model are configurable
   (`LLM_PROVIDER` / `LLM_MODEL`), so swapping to `openai` / `gpt-4o` is a
   one-line change and a re-run of the setup script.
-- **Vapi-provided voice and transcriber** (Emma, Deepgram nova-2) rather than
-  ElevenLabs, so the demo needs no third-party TTS credential to reproduce.
+- **AssemblyAI Universal-Streaming (English) for transcription.** Deepgram
+  nova-2 was tried first and mis-heard names badly ("Qasim" → "Kassim"). Note
+  that AssemblyAI's *multilingual* mode was measurably worse still on English
+  names ("Qasim" → "Cosmi", "Nomad Kassen") and stalled turn-taking enough to
+  trigger silence timeouts, so the English model is used deliberately. That
+  trades away the Spanish bonus for accuracy on the required path — see
+  Known limitations.
+- **Vapi-provided voice** (Emma) rather than ElevenLabs, so the demo needs no
+  third-party TTS credential to reproduce.
 
 ## Setup
 
@@ -237,8 +244,19 @@ per-field error path.
   restore endpoint or `?include_deleted=` flag.
 - **`PUT` has PATCH semantics.** The spec asked for partial updates on `PUT`;
   implemented as specified, noted here as a deliberate REST deviation.
-- **English only.** Multi-language was a listed bonus; the `preferred_language`
-  field is stored but does not switch the agent's language mid-call.
+- **English only, by measurement rather than omission.** Multi-language was a
+  listed bonus and AssemblyAI's multilingual mode was tried, but it degraded
+  English name recognition enough to make the required path worse — the whole
+  point of the exercise is registering patients correctly, so accuracy on the
+  required flow beat coverage of an optional one. Switching back is one
+  variable (`TRANSCRIBER_LANGUAGE=multi`). The `preferred_language` field is
+  stored but does not switch the agent's language mid-call.
+- **Speech recognition remains the weakest link.** Names and addresses spoken
+  over a phone line are genuinely hard, and no transcriber tested got them
+  reliably right first time. The mitigations are conversational rather than
+  technical: the agent asks callers to spell unusual names, treats spelled
+  letters as authoritative over the transcript, reads everything back before
+  saving, and takes the phone number from caller ID rather than from speech.
 
 ## Next steps
 
