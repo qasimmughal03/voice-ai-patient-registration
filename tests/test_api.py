@@ -168,6 +168,21 @@ def test_lookup_uses_caller_id_when_no_argument(client):
     assert found["first_name"] == "Ada"
 
 
+def test_lookup_without_caller_id_is_a_clean_state_not_an_error(client):
+    """Web calls have no caller ID; the agent must be told to ask, not see an error."""
+    result = _tool_call(client, "find_patient_by_phone", {})
+    assert result["success"] is True
+    assert result["found"] is False
+    assert result["caller_id_available"] is False
+    assert "phone_number_spoken" not in result  # nothing to read back aloud
+
+
+def test_lookup_with_caller_id_reports_it_available(client):
+    result = _tool_call_from(client, "find_patient_by_phone", {}, "3125550144")
+    assert result["caller_id_available"] is True
+    assert result["phone_number_spoken"] == "3 1 2 5 5 5 0 1 4 4"
+
+
 def test_no_phone_and_no_caller_id_is_rejected_not_invented(client):
     """Web calls have no caller ID; the API must refuse, not fabricate."""
     args = {k: v for k, v in VALID.items() if k != "phone_number"}

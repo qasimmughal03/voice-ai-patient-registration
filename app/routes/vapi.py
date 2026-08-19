@@ -69,10 +69,25 @@ def tool_register_patient(args: dict, db: Session, caller_number: str | None = N
 
 
 def tool_find_patient_by_phone(args: dict, db: Session, caller_number: str | None = None) -> dict:
+    raw = args.get("phone_number") or caller_number
+    if not raw:
+        # No caller ID (web calls) and nothing supplied. This is a normal
+        # state, not an error: the agent must ask for the number instead.
+        return {
+            "success": True,
+            "found": False,
+            "caller_id_available": False,
+            "next_step": "Ask the caller for their phone number; it is not known.",
+        }
     try:
-        phone = normalize_phone(args.get("phone_number") or caller_number or "")
+        phone = normalize_phone(raw)
     except ValueError as e:
-        return {"success": False, "errors": [{"field": "phone_number", "message": str(e)}]}
+        return {
+            "success": True,
+            "found": False,
+            "caller_id_available": False,
+            "next_step": f"Ask the caller for their phone number ({e}).",
+        }
     patient = db.scalars(
         select(Patient)
         .where(Patient.phone_number == phone, Patient.deleted_at.is_(None))
@@ -83,6 +98,7 @@ def tool_find_patient_by_phone(args: dict, db: Session, caller_number: str | Non
     result = {
         "success": True,
         "found": patient is not None,
+        "caller_id_available": True,
         "phone_number_used": phone,
         "phone_number_spoken": " ".join(phone),
         "from_caller_id": not args.get("phone_number"),
