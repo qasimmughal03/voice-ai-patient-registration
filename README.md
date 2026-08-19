@@ -5,19 +5,29 @@ natural conversation, persists them to a database, and exposes the records
 through a REST API.
 
 **Live demo**
-- Phone number: **+1 (989) 569-8036** — call this to register
+- Phone number: **+1 (989) 569-8036** — call this to register (US callers)
 - API base URL: **https://voice-ai-patient-registration-production-683f.up.railway.app**
 - Interactive API docs: https://voice-ai-patient-registration-production-683f.up.railway.app/docs
 
 Deployed on Railway (FastAPI service + managed Postgres with a persistent
 volume). No credentials are needed to call the API.
 
+> **Note on the phone number.** It is a Vapi-provided number, and Vapi
+> restricts free numbers to US national use, so inbound calls originating
+> outside the US are dropped by the carrier before reaching Vapi (confirmed:
+> such attempts produce no call record on the Vapi side at all). US-based
+> reviewers should reach it normally. Because the developer is not US-based,
+> the conversation was validated over Vapi's web-call transport, which
+> exercises the identical assistant, prompt, tools, webhook, and database —
+> only the PSTN leg differs. Migrating to an imported Twilio number would lift
+> the restriction and is the first item under Next Steps.
+
 ---
 
 ## Architecture
 
 ```
-  Caller ──phone──▶ Vapi ──────────▶ GPT-4o (Ava, intake coordinator)
+  Caller ──phone──▶ Vapi ──────▶ Gemini 2.5 Flash (Ava, intake coordinator)
                   (STT + TTS)             │
                                           │ tool calls (HTTPS webhook)
                                           ▼
@@ -61,9 +71,15 @@ model produces is trusted.
 - **SQLAlchemy + SQLite by default, Postgres via `DATABASE_URL`.** SQLite keeps
   local setup to zero steps; switching to Postgres in deployment is one
   environment variable, with no code change.
-- **GPT-4o** rather than a mini model. Intake requires tracking many fields
-  across corrections and out-of-order answers; the cheaper models drop fields
-  and mishear spelled-out names more often. Latency was acceptable in testing.
+- **Gemini 2.5 Flash** as the LLM. On a phone call, latency is a feature: every
+  extra hundred milliseconds is heard as an awkward pause, so a flash-tier
+  model beats a pro-tier one here. It also has reliable function calling, which
+  matters because the agent must fill a nine-field tool call while the caller
+  corrects themselves mid-sentence. The provider and model are configurable
+  (`LLM_PROVIDER` / `LLM_MODEL`), so swapping to `openai` / `gpt-4o` is a
+  one-line change and a re-run of the setup script.
+- **Vapi-provided voice and transcriber** (Emma, Deepgram nova-2) rather than
+  ElevenLabs, so the demo needs no third-party TTS credential to reproduce.
 
 ## Setup
 
@@ -79,15 +95,17 @@ Expose it publicly (any tunnel or host works):
 ngrok http 8000
 ```
 
-Then create the Vapi assistant and attach a number:
+Then copy `.env.example` to `.env`, fill in your keys, and create the assistant:
 
 ```bash
-export VAPI_API_KEY=...                        # Vapi dashboard → API Keys (private)
-export PUBLIC_BASE_URL=https://your-tunnel.ngrok-free.app
-export VAPI_WEBHOOK_SECRET=some-random-string  # optional but recommended
+cp .env.example .env      # then set VAPI_API_KEY, PUBLIC_BASE_URL, GEMINI_API_KEY
 uv run python vapi/setup_assistant.py
 uv run python vapi/attach_number.py <assistant_id_printed_above>
 ```
+
+`VAPI_API_KEY` must be the **private** key — the public key returns 401. The
+setup script registers `GEMINI_API_KEY` with Vapi as a provider credential, so
+the model key is stored server-side by Vapi rather than in this repo.
 
 `setup_assistant.py` reads the prompt from `prompts/system_prompt.md` and the
 tool schemas from `vapi/tools.json`, so **the prompt is version-controlled, not
@@ -104,6 +122,9 @@ trapped in a dashboard.** Re-run it with `VAPI_ASSISTANT_ID` set to push edits.
 | `VAPI_API_KEY` | Setup only | Vapi private key, used by the setup scripts |
 | `PUBLIC_BASE_URL` | Setup only | Public URL of this API, for the webhook |
 | `VAPI_WEBHOOK_SECRET` | No | If set, `/vapi/tools` requires a matching `X-Vapi-Secret` header |
+| `GEMINI_API_KEY` | Setup only | Registered with Vapi as a Google provider credential on first run |
+| `LLM_PROVIDER` / `LLM_MODEL` | No | Default `google` / `gemini-2.5-flash` |
+| `VOICE_PROVIDER` / `VOICE_ID` | No | Default `vapi` / `Emma` |
 
 No secrets are read at request time by the API itself, and none are committed.
 
@@ -221,10 +242,12 @@ per-field error path.
 
 ## Next steps
 
-1. Persist call transcripts linked to `patient_id` via Vapi's
+1. Import a Twilio number in place of the free Vapi number, lifting the
+   US-only inbound restriction described above.
+2. Persist call transcripts linked to `patient_id` via Vapi's
    `end-of-call-report` webhook (the assistant already subscribes to it).
-2. API-key auth plus per-IP rate limiting on the REST endpoints.
-3. Alembic migrations instead of `create_all`.
-4. Spanish support: detect language on the first turn and swap voice + prompt.
-5. Address verification against USPS to catch mis-transcribed street names.
-6. A small dashboard listing registered patients.
+3. API-key auth plus per-IP rate limiting on the REST endpoints.
+4. Alembic migrations instead of `create_all`.
+5. Spanish support: detect language on the first turn and swap voice + prompt.
+6. Address verification against USPS to catch mis-transcribed street names.
+7. A small dashboard listing registered patients.
