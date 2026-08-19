@@ -1,0 +1,81 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "find_patient_by_phone",
+      "description": "Look up an existing patient by phone number. Call this silently as soon as the caller gives their phone number, before collecting the rest of their details, so you can offer to update an existing record instead of creating a duplicate.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "phone_number": {
+            "type": "string",
+            "description": "The caller's 10-digit U.S. phone number, digits only."
+          }
+        },
+        "required": ["phone_number"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "register_patient",
+      "description": "Save a new patient registration. Only call this AFTER reading all collected information back to the caller and getting their confirmation. If the result contains field errors, re-ask the caller for only those specific fields and call again.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "first_name": {"type": "string", "description": "Legal first name."},
+          "last_name": {"type": "string", "description": "Legal last name."},
+          "date_of_birth": {"type": "string", "description": "Date of birth in MM/DD/YYYY format. Must be in the past."},
+          "sex": {"type": "string", "enum": ["Male", "Female", "Other", "Decline to Answer"]},
+          "phone_number": {"type": "string", "description": "10-digit U.S. phone number, digits only."},
+          "address_line_1": {"type": "string", "description": "Street address."},
+          "city": {"type": "string"},
+          "state": {"type": "string", "description": "Two-letter U.S. state abbreviation, e.g. CA."},
+          "zip_code": {"type": "string", "description": "5-digit ZIP or ZIP+4."},
+          "email": {"type": "string", "description": "Optional. Only include if the caller provided it."},
+          "address_line_2": {"type": "string", "description": "Optional apartment, suite, or unit."},
+          "insurance_provider": {"type": "string", "description": "Optional insurance company name."},
+          "insurance_member_id": {"type": "string", "description": "Optional member or subscriber ID."},
+          "preferred_language": {"type": "string", "description": "Optional. Defaults to English."},
+          "emergency_contact_name": {"type": "string", "description": "Optional emergency contact full name."},
+          "emergency_contact_phone": {"type": "string", "description": "Optional 10-digit emergency contact phone."}
+        },
+        "required": [
+          "first_name", "last_name", "date_of_birth", "sex", "phone_number",
+          "address_line_1", "city", "state", "zip_code"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "update_patient",
+      "description": "Update an existing patient record. Use this when find_patient_by_phone found a record and the caller confirmed they want to update rather than register again. Only include the fields the caller wants to change.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "patient_id": {"type": "string", "description": "The patient_id returned by find_patient_by_phone."},
+          "first_name": {"type": "string"},
+          "last_name": {"type": "string"},
+          "date_of_birth": {"type": "string", "description": "MM/DD/YYYY."},
+          "sex": {"type": "string", "enum": ["Male", "Female", "Other", "Decline to Answer"]},
+          "phone_number": {"type": "string"},
+          "address_line_1": {"type": "string"},
+          "address_line_2": {"type": "string"},
+          "city": {"type": "string"},
+          "state": {"type": "string"},
+          "zip_code": {"type": "string"},
+          "email": {"type": "string"},
+          "insurance_provider": {"type": "string"},
+          "insurance_member_id": {"type": "string"},
+          "preferred_language": {"type": "string"},
+          "emergency_contact_name": {"type": "string"},
+          "emergency_contact_phone": {"type": "string"}
+        },
+        "required": ["patient_id"]
+      }
+    }
+  }
+]
