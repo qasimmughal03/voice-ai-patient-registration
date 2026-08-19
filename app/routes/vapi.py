@@ -78,15 +78,22 @@ def tool_find_patient_by_phone(args: dict, db: Session, caller_number: str | Non
         .where(Patient.phone_number == phone, Patient.deleted_at.is_(None))
         .order_by(Patient.created_at.desc())
     ).first()
-    if patient is None:
-        return {"success": True, "found": False}
-    return {
+    # Echo the number back so the agent can read it aloud for confirmation
+    # rather than asking the caller to recite digits it may mis-transcribe.
+    result = {
         "success": True,
-        "found": True,
-        "patient_id": patient.patient_id,
-        "first_name": patient.first_name,
-        "last_name": patient.last_name,
+        "found": patient is not None,
+        "phone_number_used": phone,
+        "phone_number_spoken": " ".join(phone),
+        "from_caller_id": not args.get("phone_number"),
     }
+    if patient is not None:
+        result.update(
+            patient_id=patient.patient_id,
+            first_name=patient.first_name,
+            last_name=patient.last_name,
+        )
+    return result
 
 
 def tool_update_patient(args: dict, db: Session, caller_number: str | None = None) -> dict:
