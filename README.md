@@ -5,9 +5,12 @@ natural conversation, persists them to a database, and exposes the records
 through a REST API.
 
 **Live demo**
-- Phone number: `TODO — fill in after running vapi/setup_assistant.py`
-- API base URL: `TODO — fill in after deploying`
-- Interactive API docs: `<API base URL>/docs`
+- Phone number: **+1 (989) 569-8036** — call this to register
+- API base URL: **https://voice-ai-patient-registration-production-683f.up.railway.app**
+- Interactive API docs: https://voice-ai-patient-registration-production-683f.up.railway.app/docs
+
+Deployed on Railway (FastAPI service + managed Postgres with a persistent
+volume). No credentials are needed to call the API.
 
 ---
 
@@ -96,6 +99,8 @@ trapped in a dashboard.** Re-run it with `VAPI_ASSISTANT_ID` set to push edits.
 |---|---|---|
 | `DATABASE_URL` | No | SQLAlchemy URL. Defaults to `sqlite:///./patients.db`. `postgres://` and `postgresql://` are rewritten to use psycopg 3 automatically |
 | `SEED_ON_STARTUP` | No | `true` inserts the 2 demo patients on boot if missing |
+| `REQUIRE_POSTGRES` | No | `true` refuses to start on SQLite — set this in deployment so an unset `DATABASE_URL` fails loudly instead of silently using a throwaway database |
+| `PORT` | No | Port to bind. Defaults to 8000; set explicitly on Railway so the app and the generated domain agree |
 | `VAPI_API_KEY` | Setup only | Vapi private key, used by the setup scripts |
 | `PUBLIC_BASE_URL` | Setup only | Public URL of this API, for the webhook |
 | `VAPI_WEBHOOK_SECRET` | No | If set, `/vapi/tools` requires a matching `X-Vapi-Secret` header |
@@ -193,10 +198,13 @@ per-field error path.
 
 ## Trade-offs and known limitations
 
-- **SQLite by default.** Fine for this demo. On a host with an ephemeral
-  filesystem it must be either a mounted volume or swapped for Postgres via
-  `DATABASE_URL` — this is the single most likely way to lose data in
-  deployment, so it is called out here deliberately.
+- **SQLite by default, Postgres in deployment.** SQLite keeps local setup to
+  zero steps, but on a host with an ephemeral filesystem it silently loses
+  every record on redeploy. This actually happened during deployment: the
+  service booted fine, reported healthy, and was quietly writing to a
+  throwaway file. Because a database that *looks* healthy while discarding
+  data is worse than one that refuses to start, `REQUIRE_POSTGRES=true` is set
+  in production and the app now fails loudly on the SQLite fallback.
 - **No authentication on the REST API.** The spec did not ask for it and adding
   it would have blocked reviewer testing. The webhook does support a shared
   secret. Real deployment needs auth on every endpoint.

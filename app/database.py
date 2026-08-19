@@ -14,6 +14,14 @@ elif DATABASE_URL.startswith("postgresql://"):
     DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
 
 is_sqlite = DATABASE_URL.startswith("sqlite")
+
+# A deployed instance that quietly falls back to SQLite on an ephemeral disk
+# looks healthy and loses every record on redeploy. Fail loudly instead.
+if is_sqlite and os.environ.get("REQUIRE_POSTGRES", "").lower() in ("1", "true", "yes"):
+    raise RuntimeError(
+        "REQUIRE_POSTGRES is set but DATABASE_URL points at SQLite "
+        f"({DATABASE_URL!r}). Refusing to start with a throwaway database."
+    )
 engine = create_engine(
     DATABASE_URL,
     connect_args={"check_same_thread": False} if is_sqlite else {},
