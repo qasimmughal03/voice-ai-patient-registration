@@ -3,7 +3,7 @@
     "type": "function",
     "function": {
       "name": "find_patient_by_phone",
-      "description": "Look up an existing patient by phone number. Call this silently as soon as the caller gives their phone number, before collecting the rest of their details, so you can offer to update an existing record instead of creating a duplicate.",
+      "description": "Look up an existing patient by phone number. Call this silently EVERY time you learn a phone number: once right after the greeting with no arguments (which uses the caller's own number), and again passing any phone number the caller speaks aloud. Use it to offer an update instead of creating a duplicate record. If caller_id_available is false, the caller's number is unknown and must be asked for.",
       "parameters": {
         "type": "object",
         "properties": {
