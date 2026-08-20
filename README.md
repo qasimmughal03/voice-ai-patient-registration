@@ -58,6 +58,9 @@ model produces is trusted.
 | Webhook adapter | `app/routes/vapi.py` | Vapi payload ⇄ service layer |
 | Validation | `app/schemas.py` | All field rules, shared by API and agent |
 | REST API | `app/routes/patients.py` | CRUD, query filters, soft delete |
+| REST API | `app/routes/appointments.py` | Slots, booking, cancellation |
+| Scheduling | `app/scheduling.py` | Clinic hours, slot generation, clock |
+| Dashboard | `app/routes/dashboard.py` | Read-only patient/appointment view |
 | Persistence | `app/models.py`, `app/database.py` | Schema, session management |
 
 ## Tech stack and why
@@ -140,6 +143,7 @@ trapped in a dashboard.** Re-run it with `VAPI_ASSISTANT_ID` set to push edits.
 | `VOICE_PROVIDER` / `VOICE_ID` | No | Default `vapi` / `Emma` |
 | `TRANSCRIBER_PROVIDER` / `SPEECH_MODEL` | No | Default `assembly-ai` / `universal-3-5-pro` |
 | `TRANSCRIBER_LANGUAGE` / `TRANSCRIBER_MODE` | No | Default `en` / `balanced` |
+| `CLINIC_TIMEZONE` | No | Clinic wall-clock timezone. Default `America/New_York` |
 
 No secrets are read at request time by the API itself, and none are committed.
 
@@ -154,6 +158,10 @@ All responses use the envelope `{ "data": ..., "error": ... }`.
 | `POST` | `/patients` | 201 with created record |
 | `PUT` | `/patients/{id}` | Partial updates; only supplied fields change |
 | `DELETE` | `/patients/{id}` | Soft delete — sets `deleted_at`, row is retained |
+| `GET` | `/appointments/slots` | Open slots, generated from clinic hours |
+| `GET` | `/appointments` | Booked appointments; `?patient_id=` to filter |
+| `POST` | `/appointments` | Book a slot for a patient |
+| `DELETE` | `/appointments/{id}` | Cancel (sets `cancelled_at`) |
 
 Plus `GET /dashboard`, a read-only web UI listing registered patients with a
 client-side filter. It is self-contained (no build step, no CDN) and reads the
@@ -181,6 +189,25 @@ curl -s -X POST $API/patients -H 'Content-Type: application/json' \
        "phone_number":"4155550123","address_line_1":"123 Market St","city":"San Francisco",
        "state":"CA","zip_code":"94103"}'
 ```
+
+## Appointment scheduling and the clinic clock
+
+After a successful registration the agent offers a first appointment. Slots are
+generated from clinic hours (weekdays, 9–5, half-hourly, two hours' lead time)
+rather than stored as fixtures, so nothing goes stale; bookings are real rows
+linked to the patient.
+
+The agent can only book a `slot_id` that `list_appointment_slots` handed it,
+and the server re-validates every booking independently — a time the model
+composed itself, outside hours, at a weekend, in the past, or already taken is
+refused with a reason the agent can act on. This is the same principle as the
+patient validation: the LLM proposes, the server decides.
+
+`get_current_time` exists because an LLM has no clock. Asked "what time is it?"
+an ungrounded model either refuses or invents an answer, so the agent is told
+it has no internal clock and must call the tool before stating any time, date,
+or whether the clinic is open. Answers are in the clinic's timezone
+(`CLINIC_TIMEZONE`, default `America/New_York`) while storage stays UTC.
 
 ## Conversation design
 
@@ -328,9 +355,11 @@ is that this one is mitigated, not solved.
 
 2. Import a Twilio number in place of the free Vapi number, lifting the
    US-only inbound restriction described above.
-3. Persist call transcripts linked to `patient_id` via Vapi's
+3. Cancel or reschedule an existing appointment by phone; today the agent can
+   book but not move a booking.
+4. Persist call transcripts linked to `patient_id` via Vapi's
    `end-of-call-report` webhook (the assistant already subscribes to it).
-4. API-key auth plus per-IP rate limiting on the REST endpoints.
-5. Alembic migrations instead of `create_all`.
-6. Spanish support: detect language on the first turn and swap voice + prompt.
-7. Address verification against USPS to catch mis-transcribed street names.
+5. API-key auth plus per-IP rate limiting on the REST endpoints.
+6. Alembic migrations instead of `create_all`.
+7. Spanish support: detect language on the first turn and swap voice + prompt.
+8. Address verification against USPS to catch mis-transcribed street names.
