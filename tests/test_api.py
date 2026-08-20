@@ -207,3 +207,71 @@ def test_dashboard_serves_html(client):
     assert r.status_code == 200
     assert "text/html" in r.headers["content-type"]
     assert "Registered Patients" in r.text
+
+
+# --- appointments and clock ---------------------------------------------
+
+def test_current_time_tool_reports_clinic_clock(client):
+    r = _tool_call(client, "get_current_time", {})
+    assert r["success"] is True
+    assert r["timezone"]
+    assert isinstance(r["clinic_is_open"], bool)
+    assert "AM" in r["spoken"] or "PM" in r["spoken"]
+
+
+def test_slots_are_within_clinic_hours_and_on_weekdays(client):
+    r = _tool_call(client, "list_appointment_slots", {"limit": 6})
+    assert r["success"] is True
+    assert r["slots"], "expected open slots"
+    from datetime import datetime
+    for s in r["slots"]:
+        dt = datetime.fromisoformat(s["slot_id"])
+        assert dt.weekday() < 5, "weekend slot offered"
+        assert 9 <= dt.hour < 17, "slot outside clinic hours"
+        assert dt.minute in (0, 30)
+
+
+def test_book_appointment_end_to_end(client):
+    pid = _tool_call(client, "register_patient", VALID)["patient_id"]
+    slot = _tool_call(client, "list_appointment_slots", {})["slots"][0]
+    booked = _tool_call(
+        client, "book_appointment",
+        {"patient_id": pid, "slot_id": slot["slot_id"], "reason": "New patient visit"},
+    )
+    assert booked["success"] is True
+    listed = client.get(f"/appointments?patient_id={pid}").json()["data"]
+    assert len(listed) == 1
+    assert listed[0]["reason"] == "New patient visit"
+
+
+def test_booked_slot_is_not_offered_again(client):
+    pid = _tool_call(client, "register_patient", VALID)["patient_id"]
+    slot = _tool_call(client, "list_appointment_slots", {})["slots"][0]
+    _tool_call(client, "book_appointment", {"patient_id": pid, "slot_id": slot["slot_id"]})
+    again = _tool_call(client, "list_appointment_slots", {})
+    assert slot["slot_id"] not in [s["slot_id"] for s in again["slots"]]
+
+
+def test_invented_slot_is_rejected(client):
+    """The agent may compose a time it was never offered; the server must refuse."""
+    pid = _tool_call(client, "register_patient", VALID)["patient_id"]
+    for bad in ["2020-01-01T10:00", "2099-01-02T03:00", "not-a-date"]:
+        r = _tool_call(client, "book_appointment", {"patient_id": pid, "slot_id": bad})
+        assert r["success"] is False, f"accepted bad slot {bad}"
+
+
+def test_booking_for_unknown_patient_rejected(client):
+    r = _tool_call(client, "book_appointment",
+                   {"patient_id": "nope", "slot_id": "2026-09-01T10:00"})
+    assert r["success"] is False
+
+
+def test_appointment_rest_endpoints(client):
+    pid = client.post("/patients", json=VALID).json()["data"]["patient_id"]
+    slots = client.get("/appointments/slots").json()["data"]["slots"]
+    r = client.post("/appointments",
+                    json={"patient_id": pid, "starts_at": slots[0]["slot_id"]})
+    assert r.status_code == 201
+    aid = r.json()["data"]["appointment_id"]
+    assert client.delete(f"/appointments/{aid}").status_code == 200
+    assert client.get(f"/appointments?patient_id={pid}").json()["data"] == []

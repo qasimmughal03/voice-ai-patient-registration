@@ -19,8 +19,10 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Patient
+from app.routes.appointments import book as book_appointment
 from app.routes.patients import _dump
 from app.schemas import PatientCreate, PatientUpdate, normalize_phone
+from app.scheduling import CLINIC_TIMEZONE, available_slots, now_local, speak_datetime, to_local
 
 logger = logging.getLogger("app.vapi")
 router = APIRouter(prefix="/vapi", tags=["vapi"])
@@ -142,10 +144,75 @@ def tool_update_patient(args: dict, db: Session, caller_number: str | None = Non
     return {"success": True, "patient_id": patient.patient_id, "message": "Record updated."}
 
 
+def tool_get_current_time(args: dict, db: Session, caller_number: str | None = None) -> dict:
+    """An LLM has no clock. Without this it either refuses or invents a time."""
+    local = now_local()
+    return {
+        "success": True,
+        "spoken": speak_datetime(local),
+        "time_spoken": local.strftime("%-I:%M %p").replace("AM", "AM").replace("PM", "PM"),
+        "date_iso": local.date().isoformat(),
+        "timezone": CLINIC_TIMEZONE,
+        "clinic_is_open": local.weekday() < 5 and 9 <= local.hour < 17,
+        "clinic_hours": "Monday to Friday, 9 AM to 5 PM",
+    }
+
+
+def tool_list_appointment_slots(args: dict, db: Session, caller_number: str | None = None) -> dict:
+    slots = available_slots(db, limit=int(args.get("limit") or 4))
+    if not slots:
+        return {
+            "success": True,
+            "slots": [],
+            "next_step": "No slots are open in the next two weeks. Offer to have "
+                         "the front desk call them back.",
+        }
+    return {
+        "success": True,
+        "timezone": CLINIC_TIMEZONE,
+        "slots": [
+            {"slot_id": s.strftime("%Y-%m-%dT%H:%M"), "spoken": speak_datetime(s)}
+            for s in slots
+        ],
+        "next_step": "Offer the caller two or three of these by their `spoken` "
+                     "text. To book, pass back the exact `slot_id` string — "
+                     "never a time you composed yourself.",
+    }
+
+
+def tool_book_appointment(args: dict, db: Session, caller_number: str | None = None) -> dict:
+    patient_id = args.get("patient_id")
+    slot_id = args.get("slot_id") or args.get("starts_at")
+    if not patient_id:
+        return {"success": False, "errors": [{"field": "patient_id",
+                "message": "register the patient first, then book with their patient_id"}]}
+    if not slot_id:
+        return {"success": False, "errors": [{"field": "slot_id",
+                "message": "pass the exact slot_id from list_appointment_slots"}]}
+    try:
+        appt = book_appointment(db, patient_id, slot_id, args.get("reason"))
+    except ValueError as e:
+        return {
+            "success": False,
+            "errors": [{"field": "slot_id", "message": str(e)}],
+            "next_step": "Call list_appointment_slots again and offer a fresh slot.",
+        }
+    local = to_local(appt.starts_at)
+    return {
+        "success": True,
+        "appointment_id": appt.appointment_id,
+        "spoken": speak_datetime(local),
+        "message": f"Booked for {speak_datetime(local)}.",
+    }
+
+
 TOOLS = {
     "register_patient": tool_register_patient,
     "find_patient_by_phone": tool_find_patient_by_phone,
     "update_patient": tool_update_patient,
+    "get_current_time": tool_get_current_time,
+    "list_appointment_slots": tool_list_appointment_slots,
+    "book_appointment": tool_book_appointment,
 }
 
 

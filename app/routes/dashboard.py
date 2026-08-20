@@ -58,6 +58,8 @@ PAGE = """<!doctype html>
   .name { font-weight: 600; }
   .mono { font-variant-numeric: tabular-nums; }
   .id { color: var(--muted); font-size: .78rem; }
+  .appt { display: inline-block; padding: .15rem .5rem; border-radius: 999px;
+          background: var(--chip); border: 1px solid var(--line); font-size: .82rem; }
   .msg { padding: 2.5rem 1rem; text-align: center; color: var(--muted); }
   footer { margin-top: 1rem; color: var(--muted); font-size: .8rem; }
   a { color: var(--accent); }
@@ -85,7 +87,7 @@ PAGE = """<!doctype html>
         <thead>
           <tr>
             <th>Name</th><th>Date of birth</th><th>Sex</th><th>Phone</th>
-            <th>Address</th><th>Insurance</th><th>Registered</th>
+            <th>Address</th><th>Insurance</th><th>Appointment</th><th>Registered</th>
           </tr>
         </thead>
         <tbody id="rows"></tbody>
@@ -106,6 +108,7 @@ const msgEl = document.getElementById('msg');
 const countEl = document.getElementById('count');
 const qEl = document.getElementById('q');
 let patients = [];
+let appts = {};
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g,
   c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -139,6 +142,8 @@ function render() {
       <td class="mono">${esc(phone(p.phone_number))}</td>
       <td>${esc(address(p))}</td>
       <td>${esc(p.insurance_provider || '—')}</td>
+      <td>${appts[p.patient_id]
+            ? `<span class="appt">${esc(appts[p.patient_id])}</span>` : '—'}</td>
       <td class="mono">${esc((p.created_at || '').slice(0, 10))}</td>
     </tr>`).join('');
 
@@ -157,10 +162,18 @@ async function load() {
   msgEl.style.display = 'block';
   msgEl.textContent = 'Loading…';
   try {
-    const res = await fetch('/patients');
-    const body = await res.json();
-    if (!res.ok || body.error) throw new Error(body.error?.message || `HTTP ${res.status}`);
+    const [pRes, aRes] = await Promise.all([fetch('/patients'), fetch('/appointments')]);
+    const body = await pRes.json();
+    if (!pRes.ok || body.error) throw new Error(body.error?.message || `HTTP ${pRes.status}`);
     patients = body.data || [];
+    appts = {};
+    if (aRes.ok) {
+      const aBody = await aRes.json();
+      // Soonest upcoming booking per patient.
+      for (const a of (aBody.data || [])) {
+        if (!appts[a.patient_id]) appts[a.patient_id] = a.spoken;
+      }
+    }
     render();
   } catch (err) {
     rowsEl.innerHTML = '';

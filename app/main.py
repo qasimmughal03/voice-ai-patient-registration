@@ -10,7 +10,7 @@ from sqlalchemy.exc import OperationalError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.database import Base, engine
-from app.routes import dashboard, patients, vapi
+from app.routes import appointments, dashboard, patients, vapi
 
 logging.basicConfig(
     level=logging.INFO,
@@ -55,6 +55,7 @@ app = FastAPI(
 )
 app.include_router(patients.router)
 app.include_router(vapi.router)
+app.include_router(appointments.router)
 app.include_router(dashboard.router)
 
 
