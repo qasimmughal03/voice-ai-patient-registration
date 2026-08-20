@@ -58,7 +58,8 @@ PAGE = """<!doctype html>
   .name { font-weight: 600; }
   .mono { font-variant-numeric: tabular-nums; }
   .id { color: var(--muted); font-size: .78rem; }
-  .appt { display: inline-block; padding: .15rem .5rem; border-radius: 999px;
+  .none { color: var(--muted); font-size: .82rem; }
+  .appt { display: inline-block; color: var(--accent); padding: .15rem .5rem; border-radius: 999px;
           background: var(--chip); border: 1px solid var(--line); font-size: .82rem; }
   .msg { padding: 2.5rem 1rem; text-align: center; color: var(--muted); }
   footer { margin-top: 1rem; color: var(--muted); font-size: .8rem; }
@@ -70,7 +71,7 @@ PAGE = """<!doctype html>
   <header>
     <div>
       <h1>Harborview Family Clinic — Registered Patients</h1>
-      <div class="sub">Live from the same REST API at <code>/patients</code>.
+      <div class="sub">Live from <code>/patients</code> and <code>/appointments</code>.
         Soft-deleted records are excluded.</div>
     </div>
     <div class="sub" id="count"></div>
@@ -86,8 +87,8 @@ PAGE = """<!doctype html>
       <table>
         <thead>
           <tr>
-            <th>Name</th><th>Date of birth</th><th>Sex</th><th>Phone</th>
-            <th>Address</th><th>Insurance</th><th>Appointment</th><th>Registered</th>
+            <th>Name</th><th>Appointment</th><th>Date of birth</th><th>Sex</th>
+            <th>Phone</th><th>Address</th><th>Insurance</th><th>Registered</th>
           </tr>
         </thead>
         <tbody id="rows"></tbody>
@@ -137,13 +138,14 @@ function render() {
     <tr>
       <td><div class="name">${esc(p.first_name)} ${esc(p.last_name)}</div>
           <div class="id">${esc(p.patient_id)}</div></td>
+      <td>${appts[p.patient_id]
+            ? `<span class="appt">${esc(appts[p.patient_id])}</span>`
+            : '<span class="none">Not booked</span>'}</td>
       <td class="mono">${esc(dob(p.date_of_birth))}</td>
       <td>${esc(p.sex)}</td>
       <td class="mono">${esc(phone(p.phone_number))}</td>
       <td>${esc(address(p))}</td>
       <td>${esc(p.insurance_provider || '—')}</td>
-      <td>${appts[p.patient_id]
-            ? `<span class="appt">${esc(appts[p.patient_id])}</span>` : '—'}</td>
       <td class="mono">${esc((p.created_at || '').slice(0, 10))}</td>
     </tr>`).join('');
 
